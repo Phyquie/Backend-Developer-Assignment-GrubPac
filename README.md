@@ -18,6 +18,7 @@ A production-ready REST API that enables teachers to upload subject-based conten
 - [Bonus Features](#bonus-features)
 - [Project Structure](#project-structure)
 - [Assumptions](#assumptions)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -25,10 +26,10 @@ A production-ready REST API that enables teachers to upload subject-based conten
 
 | Layer | Technology |
 |-------|------------|
-| Runtime | Node.js 18+ |
+| Runtime | Node.js 20.19+ |
 | Framework | Express 4 |
 | Database | PostgreSQL (Prisma Postgres / Supabase / any Postgres) |
-| ORM | Prisma 6 |
+| ORM | Prisma 7 |
 | Authentication | JWT + bcrypt |
 | File Upload | Multer 2 (disk / S3) |
 | Caching | Redis (ioredis) |
@@ -61,7 +62,7 @@ A production-ready REST API that enables teachers to upload subject-based conten
 
 ## Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20.19.0
 - A PostgreSQL database — any of:
   - [Prisma Postgres](https://console.prisma.io) (recommended)
   - [Supabase](https://supabase.com)
@@ -501,3 +502,8 @@ architecture-notes.txt     # Full system design documentation
 5. **Teacher IDs** — the public `/content/live/:teacherId` endpoint uses the teacher's UUID. Use `GET /api/v1/users/teachers` to discover teacher IDs.
 6. **File deletion** — deleting a content record removes the physical file from disk. S3 object deletion is handled via S3 lifecycle rules.
 7. **Redis is optional** — the system operates identically without Redis; responses are just not cached.
+
+---
+
+
+
