@@ -1,4 +1,8 @@
 require('dotenv').config();
+
+// Force IPv4 DNS resolution — prevents ENETUNREACH on Render/Railway when
+// cloud DB hostnames (Supabase, Redis Cloud) resolve to IPv6 addresses.
+require('dns').setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
