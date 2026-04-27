@@ -1,27 +1,28 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
-const { User } = require('../models');
+const prisma = require('../config/database');
 
 const SALT_ROUNDS = 12;
 
 const register = async ({ name, email, password }) => {
-  const existing = await User.findOne({ where: { email } });
+  const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     const err = new Error('Email is already registered');
     err.statusCode = 409;
     throw err;
   }
 
-  const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
-
-  const user = await User.create({ name, email, password_hash, role: 'teacher' });
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  const user = await prisma.user.create({
+    data: { name, email, passwordHash, role: 'teacher' },
+  });
 
   return sanitize(user);
 };
 
 const login = async ({ email, password }) => {
-  const user = await User.findOne({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
     const err = new Error('Invalid email or password');
@@ -29,7 +30,7 @@ const login = async ({ email, password }) => {
     throw err;
   }
 
-  const isMatch = await bcrypt.compare(password, user.password_hash);
+  const isMatch = await bcrypt.compare(password, user.passwordHash);
   if (!isMatch) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;
@@ -48,7 +49,7 @@ const sanitize = (user) => ({
   name: user.name,
   email: user.email,
   role: user.role,
-  createdAt: user.created_at,
+  createdAt: user.createdAt,
 });
 
 module.exports = { register, login };

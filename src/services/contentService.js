@@ -1,18 +1,12 @@
 const path = require('path');
 const fs = require('fs');
-const { Op } = require('sequelize');
-const { Content, ContentSlot, ContentSchedule, User } = require('../models');
+const prisma = require('../config/database');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
-/**
- * Create content entry after file upload.
- * Also creates/updates ContentSlot and ContentSchedule for the teacher/subject pair.
- */
 const createContent = async (teacherId, body, file) => {
   const { title, description, subject, start_time, end_time, rotation_duration } = body;
 
-  // Enforce: start_time and end_time must both be present or both absent
   if ((start_time && !end_time) || (!start_time && end_time)) {
     const err = new Error('Both start_time and end_time must be provided together');
     err.statusCode = 400;
@@ -25,44 +19,48 @@ const createContent = async (teacherId, body, file) => {
     throw err;
   }
 
-  // Normalise across storage backends:
-  //   Disk → file.path  (local path)   file.filename (basename)
-  //   S3   → file.location (full URL)  file.key      (S3 object key)
   const isS3File = !!file.location;
   const fileUrl = isS3File ? file.location : `${BASE_URL}/uploads/${path.basename(file.path)}`;
   const filePath = isS3File ? file.key : file.path;
+  const normalizedSubject = subject.toLowerCase().trim();
 
-  const content = await Content.create({
-    title,
-    description: description || null,
-    subject: subject.toLowerCase().trim(),
-    file_path: filePath,
-    file_url: fileUrl,
-    file_type: file.mimetype,
-    file_size: file.size,
-    uploaded_by: teacherId,
-    status: 'uploaded',
-    start_time: start_time || null,
-    end_time: end_time || null,
+  const content = await prisma.content.create({
+    data: {
+      title,
+      description: description || null,
+      subject: normalizedSubject,
+      filePath,
+      fileUrl,
+      fileType: file.mimetype,
+      fileSize: file.size,
+      uploadedBy: teacherId,
+      status: 'uploaded',
+      startTime: start_time ? new Date(start_time) : null,
+      endTime: end_time ? new Date(end_time) : null,
+    },
   });
 
-  // Create or find the subject slot for this teacher
-  const [slot] = await ContentSlot.findOrCreate({
-    where: { teacher_id: teacherId, subject: subject.toLowerCase().trim() },
-    defaults: { teacher_id: teacherId, subject: subject.toLowerCase().trim() },
+  const slot = await prisma.contentSlot.upsert({
+    where: {
+      unique_teacher_subject_slot: { teacherId, subject: normalizedSubject },
+    },
+    update: {},
+    create: { teacherId, subject: normalizedSubject },
   });
 
-  // Determine next rotation order for this slot
-  const maxOrder = await ContentSchedule.max('rotation_order', {
-    where: { slot_id: slot.id },
+  const agg = await prisma.contentSchedule.aggregate({
+    _max: { rotationOrder: true },
+    where: { slotId: slot.id },
   });
-  const nextOrder = (maxOrder === null || maxOrder === undefined ? -1 : maxOrder) + 1;
+  const nextOrder = (agg._max.rotationOrder ?? -1) + 1;
 
-  await ContentSchedule.create({
-    content_id: content.id,
-    slot_id: slot.id,
-    rotation_order: nextOrder,
-    duration: parseInt(rotation_duration, 10) || 5,
+  await prisma.contentSchedule.create({
+    data: {
+      contentId: content.id,
+      slotId: slot.id,
+      rotationOrder: nextOrder,
+      duration: parseInt(rotation_duration, 10) || 5,
+    },
   });
 
   return getContentById(content.id, teacherId);
@@ -77,47 +75,51 @@ const submitForReview = async (contentId, teacherId) => {
     throw err;
   }
 
-  await content.update({ status: 'pending' });
+  await prisma.content.update({ where: { id: contentId }, data: { status: 'pending' } });
   return getContentById(contentId, teacherId);
 };
 
 const getTeacherContent = async (teacherId, { status, subject, page = 1, limit = 20 } = {}) => {
-  const where = { uploaded_by: teacherId };
+  const where = { uploadedBy: teacherId };
   if (status) where.status = status;
   if (subject) where.subject = subject.toLowerCase().trim();
 
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const take = parseInt(limit, 10);
 
-  const { count, rows } = await Content.findAndCountAll({
-    where,
-    include: [
-      { model: ContentSchedule, as: 'schedule', required: false },
-      { model: User, as: 'approver', attributes: ['id', 'name'], required: false },
-    ],
-    order: [['created_at', 'DESC']],
-    limit: parseInt(limit, 10),
-    offset,
-  });
+  const [count, rows] = await Promise.all([
+    prisma.content.count({ where }),
+    prisma.content.findMany({
+      where,
+      include: {
+        schedule: true,
+        approver: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    }),
+  ]);
 
   return {
     total: count,
     page: parseInt(page, 10),
-    totalPages: Math.ceil(count / parseInt(limit, 10)),
+    totalPages: Math.ceil(count / take),
     data: rows,
   };
 };
 
 const getContentById = async (contentId, userId = null) => {
   const where = { id: contentId };
-  if (userId) where.uploaded_by = userId;
+  if (userId) where.uploadedBy = userId;
 
-  const content = await Content.findOne({
+  const content = await prisma.content.findFirst({
     where,
-    include: [
-      { model: User, as: 'uploader', attributes: ['id', 'name', 'email'] },
-      { model: User, as: 'approver', attributes: ['id', 'name'], required: false },
-      { model: ContentSchedule, as: 'schedule', required: false },
-    ],
+    include: {
+      uploader: { select: { id: true, name: true, email: true } },
+      approver: { select: { id: true, name: true } },
+      schedule: true,
+    },
   });
 
   if (!content) {
@@ -138,20 +140,18 @@ const deleteContent = async (contentId, teacherId) => {
     throw err;
   }
 
-  // Remove physical file — only for disk storage (S3 objects are not deleted here
-  // to avoid needing AWS credentials in the delete flow; handle via S3 lifecycle rules)
   const { S3_ENABLED } = require('../middlewares/upload');
-  if (!S3_ENABLED && content.file_path && fs.existsSync(content.file_path)) {
-    fs.unlinkSync(content.file_path);
+  if (!S3_ENABLED && content.filePath && fs.existsSync(content.filePath)) {
+    fs.unlinkSync(content.filePath);
   }
 
-  await content.destroy();
+  await prisma.content.delete({ where: { id: contentId } });
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 const findOwnedContent = async (contentId, teacherId) => {
-  const content = await Content.findOne({ where: { id: contentId, uploaded_by: teacherId } });
+  const content = await prisma.content.findFirst({
+    where: { id: contentId, uploadedBy: teacherId },
+  });
   if (!content) {
     const err = new Error('Content not found or you do not own it');
     err.statusCode = 404;

@@ -9,14 +9,6 @@ module.exports = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   },
 
-  db: {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432', 10),
-    name: process.env.DB_NAME || 'content_broadcasting',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'password',
-  },
-
   upload: {
     maxSize: parseInt(process.env.MAX_FILE_SIZE || '10485760', 10), // 10 MB
     allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif'],

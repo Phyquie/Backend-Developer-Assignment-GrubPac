@@ -1,31 +1,34 @@
-const { Op } = require('sequelize');
-const { Content, User, ContentSchedule } = require('../models');
+const prisma = require('../config/database');
 const { invalidateTeacherCache } = require('./schedulingService');
 
 const getAllContent = async ({ status, subject, teacherId, page = 1, limit = 20 } = {}) => {
   const where = {};
   if (status) where.status = status;
   if (subject) where.subject = subject.toLowerCase().trim();
-  if (teacherId) where.uploaded_by = teacherId;
+  if (teacherId) where.uploadedBy = teacherId;
 
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const take = parseInt(limit, 10);
 
-  const { count, rows } = await Content.findAndCountAll({
-    where,
-    include: [
-      { model: User, as: 'uploader', attributes: ['id', 'name', 'email', 'role'] },
-      { model: User, as: 'approver', attributes: ['id', 'name'], required: false },
-      { model: ContentSchedule, as: 'schedule', required: false },
-    ],
-    order: [['created_at', 'DESC']],
-    limit: parseInt(limit, 10),
-    offset,
-  });
+  const [count, rows] = await Promise.all([
+    prisma.content.count({ where }),
+    prisma.content.findMany({
+      where,
+      include: {
+        uploader: { select: { id: true, name: true, email: true, role: true } },
+        approver: { select: { id: true, name: true } },
+        schedule: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    }),
+  ]);
 
   return {
     total: count,
     page: parseInt(page, 10),
-    totalPages: Math.ceil(count / parseInt(limit, 10)),
+    totalPages: Math.ceil(count / take),
     data: rows,
   };
 };
@@ -43,15 +46,17 @@ const approveContent = async (contentId, principalId) => {
     throw err;
   }
 
-  await content.update({
-    status: 'approved',
-    approved_by: principalId,
-    approved_at: new Date(),
-    rejection_reason: null,
+  await prisma.content.update({
+    where: { id: contentId },
+    data: {
+      status: 'approved',
+      approvedBy: principalId,
+      approvedAt: new Date(),
+      rejectionReason: null,
+    },
   });
 
-  // Invalidate broadcast cache so the newly approved content is visible immediately
-  await invalidateTeacherCache(content.uploaded_by);
+  await invalidateTeacherCache(content.uploadedBy);
 
   return findContentWithDetails(contentId);
 };
@@ -71,23 +76,23 @@ const rejectContent = async (contentId, principalId, reason) => {
     throw err;
   }
 
-  await content.update({
-    status: 'rejected',
-    rejection_reason: reason.trim(),
-    approved_by: principalId,
-    approved_at: new Date(),
+  await prisma.content.update({
+    where: { id: contentId },
+    data: {
+      status: 'rejected',
+      rejectionReason: reason.trim(),
+      approvedBy: principalId,
+      approvedAt: new Date(),
+    },
   });
 
-  // Invalidate in case the content was approved and is now being revoked via reject
-  await invalidateTeacherCache(content.uploaded_by);
+  await invalidateTeacherCache(content.uploadedBy);
 
   return findContentWithDetails(contentId);
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 const findContent = async (contentId) => {
-  const content = await Content.findByPk(contentId);
+  const content = await prisma.content.findUnique({ where: { id: contentId } });
   if (!content) {
     const err = new Error('Content not found');
     err.statusCode = 404;
@@ -97,13 +102,13 @@ const findContent = async (contentId) => {
 };
 
 const findContentWithDetails = async (contentId) => {
-  return Content.findOne({
+  return prisma.content.findUnique({
     where: { id: contentId },
-    include: [
-      { model: User, as: 'uploader', attributes: ['id', 'name', 'email'] },
-      { model: User, as: 'approver', attributes: ['id', 'name'], required: false },
-      { model: ContentSchedule, as: 'schedule', required: false },
-    ],
+    include: {
+      uploader: { select: { id: true, name: true, email: true } },
+      approver: { select: { id: true, name: true } },
+      schedule: true,
+    },
   });
 };
 

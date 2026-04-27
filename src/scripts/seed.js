@@ -2,12 +2,13 @@
  * Seed script — creates the default principal and two demo teachers.
  * Run with: npm run seed
  *
- * Safe to run multiple times (uses findOrCreate).
+ * Safe to run multiple times (uses upsert).
  */
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { sequelize, User } = require('../models');
+const { PrismaClient } = require('@prisma/client');
 
+const prisma = new PrismaClient();
 const SALT_ROUNDS = 12;
 
 const users = [
@@ -33,34 +34,32 @@ const users = [
 
 const seed = async () => {
   try {
-    await sequelize.authenticate();
-    await sequelize.sync({ alter: true });
-
+    await prisma.$connect();
     console.log('Seeding users...\n');
 
     for (const userData of users) {
-      const password_hash = await bcrypt.hash(userData.password, SALT_ROUNDS);
+      const passwordHash = await bcrypt.hash(userData.password, SALT_ROUNDS);
 
-      const [user, created] = await User.findOrCreate({
+      const user = await prisma.user.upsert({
         where: { email: userData.email },
-        defaults: {
+        update: {},
+        create: {
           name: userData.name,
           email: userData.email,
-          password_hash,
+          passwordHash,
           role: userData.role,
         },
       });
 
-      console.log(
-        `${created ? '✓ Created' : '— Already exists'}: [${user.role}] ${user.email} (id: ${user.id})`
-      );
+      console.log(`✓ [${user.role}] ${user.email} (id: ${user.id})`);
     }
 
     console.log('\nSeeding complete.');
-    process.exit(0);
   } catch (err) {
     console.error('Seed failed:', err.message);
     process.exit(1);
+  } finally {
+    await prisma.$disconnect();
   }
 };
 

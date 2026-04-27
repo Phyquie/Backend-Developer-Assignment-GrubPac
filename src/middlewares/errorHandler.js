@@ -3,29 +3,35 @@ const logger = require('../utils/logger');
 const errorHandler = (err, req, res, next) => {
   logger.error(`${req.method} ${req.path} — ${err.message}`, { stack: err.stack });
 
-  // Sequelize validation errors
-  if (err.name === 'SequelizeValidationError') {
-    const errors = err.errors.map((e) => ({ field: e.path, message: e.message }));
-    return res.status(400).json({ success: false, message: 'Validation error', errors });
-  }
+  // Prisma known request errors
+  if (err.constructor?.name === 'PrismaClientKnownRequestError') {
+    // Unique constraint violation (P2002)
+    if (err.code === 'P2002') {
+      const field = err.meta?.target?.[0] || 'field';
+      return res.status(409).json({
+        success: false,
+        message: `Duplicate value for field: ${field}`,
+        errors: null,
+      });
+    }
 
-  // Sequelize unique constraint
-  if (err.name === 'SequelizeUniqueConstraintError') {
-    const field = err.errors[0]?.path;
-    return res.status(409).json({
-      success: false,
-      message: `Duplicate value for field: ${field}`,
-      errors: null,
-    });
-  }
+    // Foreign key constraint violation (P2003)
+    if (err.code === 'P2003') {
+      return res.status(400).json({
+        success: false,
+        message: 'Referenced resource does not exist',
+        errors: null,
+      });
+    }
 
-  // Sequelize foreign key constraint
-  if (err.name === 'SequelizeForeignKeyConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Referenced resource does not exist',
-      errors: null,
-    });
+    // Record not found (P2025)
+    if (err.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        message: err.meta?.cause || 'Record not found',
+        errors: null,
+      });
+    }
   }
 
   const statusCode = err.statusCode || 500;

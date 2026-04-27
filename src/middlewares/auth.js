@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const response = require('../utils/response');
-const { User } = require('../models');
+const prisma = require('../config/database');
 
 const authenticate = async (req, res, next) => {
   try {
@@ -23,9 +23,9 @@ const authenticate = async (req, res, next) => {
       return response.unauthorized(res, 'Access token is invalid');
     }
 
-    const user = await User.findOne({
+    const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      attributes: ['id', 'name', 'email', 'role'],
+      select: { id: true, name: true, email: true, role: true },
     });
 
     if (!user) {

@@ -1,6 +1,6 @@
 const multer = require('multer');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const config = require('../config/config');
 const response = require('../utils/response');
 
@@ -32,7 +32,7 @@ if (S3_ENABLED) {
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `uploads/${uuidv4()}${ext}`);
+      cb(null, `uploads/${randomUUID()}${ext}`);
     },
   });
 } else {
@@ -40,7 +40,7 @@ if (S3_ENABLED) {
     destination: (req, file, cb) => cb(null, config.upload.destination),
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `${uuidv4()}${ext}`);
+      cb(null, `${randomUUID()}${ext}`);
     },
   });
 }

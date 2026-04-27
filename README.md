@@ -27,8 +27,8 @@ A production-ready REST API that enables teachers to upload subject-based conten
 |-------|------------|
 | Runtime | Node.js 18+ |
 | Framework | Express 4 |
-| Database | PostgreSQL (Supabase) |
-| ORM | Sequelize 6 |
+| Database | PostgreSQL (Prisma Postgres / Supabase / any Postgres) |
+| ORM | Prisma 6 |
 | Authentication | JWT + bcrypt |
 | File Upload | Multer 2 (disk / S3) |
 | Caching | Redis (ioredis) |
@@ -62,8 +62,11 @@ A production-ready REST API that enables teachers to upload subject-based conten
 ## Prerequisites
 
 - Node.js >= 18
-- PostgreSQL 13+ **or** a Supabase project
-- Redis **or** a Redis Cloud / Upstash instance (optional — caching disabled if absent)
+- A PostgreSQL database — any of:
+  - [Prisma Postgres](https://console.prisma.io) (recommended)
+  - [Supabase](https://supabase.com)
+  - Local PostgreSQL 13+
+- Redis (optional — caching disabled if absent)
 - npm
 
 ---
@@ -98,9 +101,22 @@ JWT_SECRET=your-long-random-secret
 
 See [Environment Variables](#environment-variables) for the full reference.
 
-### 4. Seed the database
+### 4. Push schema to the database
 
-Creates the principal and two demo teacher accounts. Tables are auto-created on first run.
+This creates all tables from the Prisma schema:
+
+```bash
+npm run db:push
+```
+
+> For production deployments, use migrations instead:
+> ```bash
+> npm run db:migrate
+> ```
+
+### 5. Seed the database
+
+Creates the principal and two demo teacher accounts:
 
 ```bash
 npm run seed
@@ -112,7 +128,7 @@ npm run seed
 | Teacher 1 | teacher1@school.com | Teacher@123 |
 | Teacher 2 | teacher2@school.com | Teacher@123 |
 
-### 5. Start the server
+### 6. Start the server
 
 ```bash
 # Development (auto-reload)
@@ -134,15 +150,12 @@ API base: `http://localhost:3000/api/v1`
 PORT=3000
 NODE_ENV=development
 
-# Database — Option A: connection URL (Supabase / Railway / Heroku)
+# Database — Option A: standard Postgres URL (Supabase / Railway / local)
 DATABASE_URL=postgresql://postgres:[PASSWORD]@host:5432/postgres
 
-# Database — Option B: individual params (local PostgreSQL)
-# DB_HOST=localhost
-# DB_PORT=5432
-# DB_NAME=content_broadcasting
-# DB_USER=postgres
-# DB_PASSWORD=your_password
+# Database — Option B: Prisma Postgres (from console.prisma.io)
+# DATABASE_URL=prisma+postgres://accelerate.prisma-data.net/?api_key=YOUR_KEY
+# DIRECT_URL=postgresql://postgres:[PASSWORD]@host:5432/postgres   # required for migrations with Prisma Postgres
 
 # JWT
 JWT_SECRET=your-very-long-random-secret
@@ -156,10 +169,7 @@ UPLOAD_DEST=uploads/
 RATE_LIMIT_WINDOW_MS=900000   # 15 minutes
 RATE_LIMIT_MAX=100
 
-# Redis Caching — Option A: URL
-# REDIS_URL=redis://localhost:6379
-
-# Redis Caching — Option B: individual params (Redis Cloud)
+# Redis Caching (optional — omit all to disable)
 # REDIS_HOST=redis-xxxxx.c14.us-east-1-3.ec2.cloud.redislabs.com
 # REDIS_PORT=13467
 # REDIS_USERNAME=default
@@ -436,10 +446,12 @@ All list endpoints support `page`, `limit`, `status`, `subject`, and `teacherId`
 ## Project Structure
 
 ```
+prisma/
+└── schema.prisma          # Prisma schema — all models and relations
 src/
 ├── config/
 │   ├── config.js          # Environment config
-│   ├── database.js        # Sequelize connection (URL or individual params)
+│   ├── database.js        # Prisma client singleton
 │   └── redis.js           # Redis connection (optional)
 ├── controllers/
 │   ├── authController.js
@@ -455,11 +467,7 @@ src/
 │   ├── validate.js        # express-validator result handler
 │   └── errorHandler.js    # Centralized error → JSON response
 ├── models/
-│   ├── User.js
-│   ├── Content.js
-│   ├── ContentSlot.js     # One per teacher-subject pair
-│   ├── ContentSchedule.js # Rotation order + duration per content
-│   └── index.js           # Associations
+│   └── index.js           # Re-exports Prisma client
 ├── routes/
 │   ├── authRoutes.js
 │   ├── contentRoutes.js   # Teacher + principal + public routes

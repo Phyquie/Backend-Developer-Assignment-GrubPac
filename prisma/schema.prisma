@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  principal
+  teacher
+}
+
+enum ContentStatus {
+  uploaded
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         Role     @default(teacher)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  uploadedContent Content[]     @relation("UploadedBy")
+  approvedContent Content[]     @relation("ApprovedBy")
+  contentSlots    ContentSlot[]
+
+  @@map("users")
+}
+
+model Content {
+  id              String        @id @default(uuid())
+  title           String        @db.VarChar(255)
+  description     String?
+  subject         String        @db.VarChar(100)
+  filePath        String        @map("file_path") @db.VarChar(500)
+  fileUrl         String        @map("file_url") @db.VarChar(500)
+  fileType        String        @map("file_type") @db.VarChar(50)
+  fileSize        Int           @map("file_size")
+  uploadedBy      String        @map("uploaded_by")
+  status          ContentStatus @default(uploaded)
+  rejectionReason String?       @map("rejection_reason")
+  approvedBy      String?       @map("approved_by")
+  approvedAt      DateTime?     @map("approved_at")
+  startTime       DateTime?     @map("start_time")
+  endTime         DateTime?     @map("end_time")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  uploader User             @relation("UploadedBy", fields: [uploadedBy], references: [id])
+  approver User?            @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  schedule ContentSchedule?
+
+  @@map("content")
+}
+
+model ContentSlot {
+  id        String   @id @default(uuid())
+  teacherId String   @map("teacher_id")
+  subject   String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  teacher   User              @relation(fields: [teacherId], references: [id])
+  schedules ContentSchedule[]
+
+  @@unique([teacherId, subject], name: "unique_teacher_subject_slot")
+  @@map("content_slots")
+}
+
+model ContentSchedule {
+  id            String   @id @default(uuid())
+  contentId     String   @unique @map("content_id")
+  slotId        String   @map("slot_id")
+  rotationOrder Int      @default(0) @map("rotation_order")
+  duration      Int      @default(5)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  content Content     @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  slot    ContentSlot @relation(fields: [slotId], references: [id])
+
+  @@map("content_schedules")
+}
