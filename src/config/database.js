@@ -7,10 +7,15 @@ let prisma;
 
 if (isPrismaPostgres) {
   const { withAccelerate } = require('@prisma/extension-accelerate');
-  prisma = new PrismaClient({ datasourceUrl: dbUrl }).$extends(withAccelerate());
+  prisma = new PrismaClient({ accelerateUrl: dbUrl }).$extends(withAccelerate());
 } else {
+  const { PrismaPg } = require('@prisma/adapter-pg');
+  const { Pool } = require('pg');
+
+  const adapter = new PrismaPg(new Pool({ connectionString: dbUrl }));
+
   prisma = new PrismaClient({
-    datasourceUrl: dbUrl,
+    adapter,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 }
