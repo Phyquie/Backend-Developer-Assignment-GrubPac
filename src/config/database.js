@@ -11,8 +11,10 @@ const sequelize = process.env.DATABASE_URL
       dialectOptions: {
         ssl: {
           require: true,
-          rejectUnauthorized: false, // required for Supabase managed TLS
+          rejectUnauthorized: false,
         },
+        // Force IPv4 — prevents ENETUNREACH when host resolves to IPv6
+        family: 4,
       },
       pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
       define: { underscored: true, timestamps: true },
