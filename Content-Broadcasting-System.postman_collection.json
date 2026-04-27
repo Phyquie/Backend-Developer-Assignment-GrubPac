@@ -1,0 +1,2924 @@
+{
+ "info": {
+  "_postman_id": "cbs-full-api-suite-v1",
+  "name": "Content Broadcasting System — Full API Suite",
+  "description": "Complete test suite: all endpoints, happy paths, validation errors, RBAC enforcement, scheduling edge cases.\n\n## Quick Start\n1. `npm run seed` — creates default users in DB\n2. Run ** Auth → Login as Principal** and **Login as Teacher 1** first — they auto-save tokens\n3. For upload requests, click the `file` row and pick any local JPG/PNG/GIF\n4. Run the full collection in order via Collection Runner for the complete E2E flow\n\n## Seeded Credentials\n| Role | Email | Password |\n|------|-------|----------|\n| Principal | principal@school.com | Principal@123 |\n| Teacher 1 | teacher1@school.com | Teacher@123 |\n| Teacher 2 | teacher2@school.com | Teacher@123 |",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "variable": [
+  {
+   "key": "base_url",
+   "value": "http://localhost:3000/api/v1",
+   "type": "string"
+  },
+  {
+   "key": "principal_token",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "teacher_token",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "teacher2_token",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "teacher1_id",
+   "value": "269272f6-77bf-4c4f-a40d-b9f471fc4f2c",
+   "type": "string"
+  },
+  {
+   "key": "teacher2_id",
+   "value": "2d469754-ae8c-4f41-b400-dc89f855b3d1",
+   "type": "string"
+  },
+  {
+   "key": "content_id",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "content_id_2",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "content_id_3",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "content_id_future",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "start_active",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "end_active",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "start_future",
+   "value": "",
+   "type": "string"
+  },
+  {
+   "key": "end_future",
+   "value": "",
+   "type": "string"
+  }
+ ],
+ "item": [
+  {
+   "name": "Health Check",
+   "item": [
+    {
+     "name": "Server Health",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/health",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "health"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('API is running', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.success).to.be.true;",
+         " pm.expect(r.message).to.include('running');",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Authentication",
+   "item": [
+    {
+     "name": "Register New Teacher — Success",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/register",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "register"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"name\": \"Demo Teacher\",\n \"email\": \"demo.teacher@school.com\",\n \"password\": \"Demo@1234\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 201', () => pm.response.to.have.status(201));",
+         "pm.test('Teacher created', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.success).to.be.true;",
+         " pm.expect(r.data.role).to.equal('teacher');",
+         " pm.expect(r.data).to.not.have.property('password_hash');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Register — Duplicate Email [409]",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/register",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "register"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"name\": \"Duplicate\",\n \"email\": \"teacher1@school.com\",\n \"password\": \"Teacher@123\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 409 Conflict', () => pm.response.to.have.status(409));",
+         "pm.test('Error message present', () => {",
+         " pm.expect(pm.response.json().success).to.be.false;",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Register — Weak Password [400]",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/register",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "register"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"name\": \"Weak Pass\",\n \"email\": \"weakpass@school.com\",\n \"password\": \"weak\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400', () => pm.response.to.have.status(400));",
+         "pm.test('Validation error on password', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.success).to.be.false;",
+         " const fields = r.errors.map(e => e.field);",
+         " pm.expect(fields).to.include('password');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Register — Missing Fields [400]",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/register",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "register"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400', () => pm.response.to.have.status(400));",
+         "pm.test('Multiple validation errors', () => {",
+         " pm.expect(pm.response.json().errors.length).to.be.above(1);",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Login as Principal — Save Token",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "login"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"email\": \"principal@school.com\",\n \"password\": \"Principal@123\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "const r = pm.response.json();",
+         "pm.test('Token returned', () => {",
+         " pm.expect(r.data.token).to.be.a('string');",
+         " pm.expect(r.data.user.role).to.equal('principal');",
+         "});",
+         "if (r.data && r.data.token) {",
+         " pm.collectionVariables.set('principal_token', r.data.token);",
+         " console.log(' Principal token saved');",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Login as Teacher 1 — Save Token",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "login"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"email\": \"teacher1@school.com\",\n \"password\": \"Teacher@123\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "const r = pm.response.json();",
+         "pm.test('Token returned', () => {",
+         " pm.expect(r.data.token).to.be.a('string');",
+         " pm.expect(r.data.user.role).to.equal('teacher');",
+         "});",
+         "if (r.data && r.data.token) {",
+         " pm.collectionVariables.set('teacher_token', r.data.token);",
+         " pm.collectionVariables.set('teacher1_id', r.data.user.id);",
+         " console.log(' Teacher 1 token saved, id:', r.data.user.id);",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Login as Teacher 2 — Save Token",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "login"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"email\": \"teacher2@school.com\",\n \"password\": \"Teacher@123\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "const r = pm.response.json();",
+         "if (r.data && r.data.token) {",
+         " pm.collectionVariables.set('teacher2_token', r.data.token);",
+         " pm.collectionVariables.set('teacher2_id', r.data.user.id);",
+         " console.log(' Teacher 2 token saved, id:', r.data.user.id);",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Login — Wrong Password [401]",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "login"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"email\": \"principal@school.com\",\n \"password\": \"WrongPass@99\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 401', () => pm.response.to.have.status(401));",
+         "pm.test('Error response', () => pm.expect(pm.response.json().success).to.be.false);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Login — Unknown Email [401]",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/auth/login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "login"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"email\": \"nobody@school.com\",\n \"password\": \"Teacher@123\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 401', () => pm.response.to.have.status(401));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get Current User /me [Teacher]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/auth/me",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "me"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Returns user profile — no password', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.role).to.equal('teacher');",
+         " pm.expect(r.data).to.not.have.property('password_hash');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get /me — No Token [401]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/auth/me",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "me"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 401', () => pm.response.to.have.status(401));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Users",
+   "item": [
+    {
+     "name": "List Teachers [Public — no auth needed]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/users/teachers",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "users",
+        "teachers"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Returns teacher list', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.data).to.be.an('array');",
+         " if (r.data.data.length > 0) {",
+         " pm.expect(r.data.data[0]).to.have.property('id');",
+         " pm.expect(r.data.data[0]).to.not.have.property('password_hash');",
+         " }",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "List All Users [Principal only]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/users",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "users"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Returns all users', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.data).to.be.an('array');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "List All Users — Teacher Forbidden [403]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/users",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "users"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Content — Teacher Upload Flow",
+   "item": [
+    {
+     "name": "Upload Maths Content #1 — Active Window [201]",
+     "description": "️ Select a local JPG/PNG/GIF file in the 'file' row before sending.",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": [],
+         "description": "Select any JPG/PNG/GIF (max 10MB)"
+        },
+        {
+         "key": "title",
+         "value": "Maths Chapter 1 — Algebra Basics",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        },
+        {
+         "key": "description",
+         "value": "Introduction to algebraic expressions",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "{{start_active}}",
+         "type": "text",
+         "description": "Set by pre-request script"
+        },
+        {
+         "key": "end_time",
+         "value": "{{end_active}}",
+         "type": "text",
+         "description": "Set by pre-request script"
+        },
+        {
+         "key": "rotation_duration",
+         "value": "5",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "exec": [
+         "const now = new Date();",
+         "pm.collectionVariables.set('start_active', new Date(now.getTime() - 3600000).toISOString());",
+         "pm.collectionVariables.set('end_active', new Date(now.getTime() + 86400000).toISOString());"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+         "pm.test('Content record returned', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.success).to.be.true;",
+         " pm.expect(r.data.id).to.be.a('string');",
+         " pm.expect(r.data.status).to.equal('uploaded');",
+         " pm.expect(r.data.subject).to.equal('maths');",
+         " pm.expect(r.data.schedule).to.not.be.null;",
+         "});",
+         "const r = pm.response.json();",
+         "if (r.data && r.data.id) {",
+         " pm.collectionVariables.set('content_id', r.data.id);",
+         " console.log(' content_id saved:', r.data.id);",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload Maths Content #2 — For Rotation [201]",
+     "description": "Second Maths item — used to verify rotation between two items.",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Maths Chapter 2 — Linear Equations",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        },
+        {
+         "key": "description",
+         "value": "Solving linear equations step by step",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "{{start_active}}",
+         "type": "text"
+        },
+        {
+         "key": "end_time",
+         "value": "{{end_active}}",
+         "type": "text"
+        },
+        {
+         "key": "rotation_duration",
+         "value": "5",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "exec": [
+         "const now = new Date();",
+         "pm.collectionVariables.set('start_active', new Date(now.getTime() - 3600000).toISOString());",
+         "pm.collectionVariables.set('end_active', new Date(now.getTime() + 86400000).toISOString());"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 201', () => pm.response.to.have.status(201));",
+         "const r = pm.response.json();",
+         "pm.test('Rotation order incremented', () => {",
+         " pm.expect(r.data.schedule.rotation_order).to.equal(1);",
+         "});",
+         "if (r.data && r.data.id) {",
+         " pm.collectionVariables.set('content_id_2', r.data.id);",
+         " console.log(' content_id_2 saved:', r.data.id);",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload Science Content — Active Window [201]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Science — Newton's Laws",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "science",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "{{start_active}}",
+         "type": "text"
+        },
+        {
+         "key": "end_time",
+         "value": "{{end_active}}",
+         "type": "text"
+        },
+        {
+         "key": "rotation_duration",
+         "value": "3",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "exec": [
+         "const now = new Date();",
+         "pm.collectionVariables.set('start_active', new Date(now.getTime() - 3600000).toISOString());",
+         "pm.collectionVariables.set('end_active', new Date(now.getTime() + 86400000).toISOString());"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 201', () => pm.response.to.have.status(201));",
+         "const r = pm.response.json();",
+         "if (r.data && r.data.id) {",
+         " pm.collectionVariables.set('content_id_3', r.data.id);",
+         " console.log(' content_id_3 (science) saved:', r.data.id);",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload Content — Future Window (will NOT show live) [201]",
+     "description": "start_time is tomorrow — content approved but inactive. Tests edge case: approved but outside window.",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Maths — Future Lesson (scheduled for tomorrow)",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "{{start_future}}",
+         "type": "text"
+        },
+        {
+         "key": "end_time",
+         "value": "{{end_future}}",
+         "type": "text"
+        },
+        {
+         "key": "rotation_duration",
+         "value": "5",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "exec": [
+         "const now = new Date();",
+         "pm.collectionVariables.set('start_future', new Date(now.getTime() + 86400000).toISOString());",
+         "pm.collectionVariables.set('end_future', new Date(now.getTime() + 172800000).toISOString());"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 201', () => pm.response.to.have.status(201));",
+         "const r = pm.response.json();",
+         "if (r.data && r.data.id) pm.collectionVariables.set('content_id_future', r.data.id);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — No File [400]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "title",
+         "value": "No File Test",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400', () => pm.response.to.have.status(400));",
+         "pm.test('File required error', () => pm.expect(pm.response.json().message).to.include('File'));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — Missing Title [400]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400', () => pm.response.to.have.status(400));",
+         "pm.test('Title validation error', () => {",
+         " const fields = pm.response.json().errors.map(e => e.field);",
+         " pm.expect(fields).to.include('title');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — Missing Subject [400]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "No Subject Test",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400', () => pm.response.to.have.status(400));",
+         "pm.test('Subject validation error', () => {",
+         " const fields = pm.response.json().errors.map(e => e.field);",
+         " pm.expect(fields).to.include('subject');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — Only start_time (no end_time) [400]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Half-scheduled Test",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "2026-05-01T08:00:00.000Z",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400 — must provide both times', () => pm.response.to.have.status(400));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — start_time after end_time [400]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Bad Dates Test",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        },
+        {
+         "key": "start_time",
+         "value": "2026-12-01T08:00:00.000Z",
+         "type": "text"
+        },
+        {
+         "key": "end_time",
+         "value": "2026-01-01T08:00:00.000Z",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400 — start must be before end', () => pm.response.to.have.status(400));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Upload — Principal Tries to Upload [403]",
+     "request": {
+      "method": "POST",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content"
+       ]
+      },
+      "body": {
+       "mode": "formdata",
+       "formdata": [
+        {
+         "key": "file",
+         "type": "file",
+         "src": []
+        },
+        {
+         "key": "title",
+         "value": "Principal Upload Attempt",
+         "type": "text"
+        },
+        {
+         "key": "subject",
+         "value": "maths",
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 403 — principal cannot upload', () => pm.response.to.have.status(403));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get My Content — All",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/my",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "my"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Pagination structure', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data).to.have.property('total');",
+         " pm.expect(r.data).to.have.property('page');",
+         " pm.expect(r.data).to.have.property('data');",
+         " pm.expect(r.data.data).to.be.an('array');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get My Content — Filter by status=uploaded",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/my?status=uploaded",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "my"
+       ],
+       "query": [
+        {
+         "key": "status",
+         "value": "uploaded"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('All returned items are uploaded status', () => {",
+         " const items = pm.response.json().data.data;",
+         " items.forEach(i => pm.expect(i.status).to.equal('uploaded'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get My Content — Filter by subject=maths",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/my?subject=maths",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "my"
+       ],
+       "query": [
+        {
+         "key": "subject",
+         "value": "maths"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('All returned items are maths subject', () => {",
+         " const items = pm.response.json().data.data;",
+         " items.forEach(i => pm.expect(i.subject).to.equal('maths'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get My Content — Pagination (page=1, limit=2)",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/my?page=1&limit=2",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "my"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "1"
+        },
+        {
+         "key": "limit",
+         "value": "2"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('At most 2 items per page', () => {",
+         " pm.expect(pm.response.json().data.data.length).to.be.at.most(2);",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get Content by ID — Own Content",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('ID matches', () => {",
+         " pm.expect(pm.response.json().data.id).to.equal(pm.collectionVariables.get('content_id'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit Maths #1 for Review — uploaded → pending [200]",
+     "request": {
+      "method": "PUT",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/submit",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "submit"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Status transitioned to pending', () => {",
+         " pm.expect(pm.response.json().data.status).to.equal('pending');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit Again — Already Pending [422]",
+     "request": {
+      "method": "PUT",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/submit",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "submit"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 422 — cannot re-submit', () => pm.response.to.have.status(422));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit Maths #2 for Review [200]",
+     "request": {
+      "method": "PUT",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_2}}/submit",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_2}}",
+        "submit"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Status = pending', () => pm.expect(pm.response.json().data.status).to.equal('pending'));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit Science #1 for Review [200]",
+     "request": {
+      "method": "PUT",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_3}}/submit",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_3}}",
+        "submit"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Submit Future-Window Content [200]",
+     "request": {
+      "method": "PUT",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_future}}/submit",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_future}}",
+        "submit"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Approval — Principal Flow",
+   "item": [
+    {
+     "name": "Get All Content [Principal]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/all",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "all"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Paginated result', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.total).to.be.a('number');",
+         " pm.expect(r.data.data).to.be.an('array');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get All Content — Filter by status=pending",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/all?status=pending",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "all"
+       ],
+       "query": [
+        {
+         "key": "status",
+         "value": "pending"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('All items are pending', () => {",
+         " pm.response.json().data.data.forEach(i => pm.expect(i.status).to.equal('pending'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get All Content — Filter by teacher",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/all?teacherId={{teacher1_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "all"
+       ],
+       "query": [
+        {
+         "key": "teacherId",
+         "value": "{{teacher1_id}}"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('All items belong to teacher 1', () => {",
+         " const id = pm.collectionVariables.get('teacher1_id');",
+         " pm.response.json().data.data.forEach(i => pm.expect(i.uploaded_by).to.equal(id));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get Pending Content",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/pending",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "pending"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('All items are pending', () => {",
+         " pm.response.json().data.data.forEach(i => pm.expect(i.status).to.equal('pending'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get Single Content by ID [Principal]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Approve Maths #1 [200]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/approve",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "approve"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Status = approved', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.status).to.equal('approved');",
+         " pm.expect(r.data.approved_by).to.be.a('string');",
+         " pm.expect(r.data.approved_at).to.be.a('string');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Approve Maths #2 [200]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_2}}/approve",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_2}}",
+        "approve"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Approved', () => pm.expect(pm.response.json().data.status).to.equal('approved'));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Approve Future-Window Content [200]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_future}}/approve",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_future}}",
+        "approve"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Approve — Already Approved [422]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/approve",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "approve"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 422', () => pm.response.to.have.status(422));",
+         "pm.test('Error message mentions status', () => {",
+         " pm.expect(pm.response.json().message).to.include('approved');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Reject Science #1 with Reason [200]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_3}}/reject",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_3}}",
+        "reject"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"rejection_reason\": \"Image resolution too low for classroom projector display\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Status = rejected with reason', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data.status).to.equal('rejected');",
+         " pm.expect(r.data.rejection_reason).to.be.a('string');",
+         " pm.expect(r.data.rejection_reason.length).to.be.above(0);",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Reject — Missing Reason [400]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/reject",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "reject"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400 — reason required', () => pm.response.to.have.status(400));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Reject — Too Short Reason [400]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/reject",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "reject"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"rejection_reason\": \"No\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 400 — reason too short', () => pm.response.to.have.status(400));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Teacher Tries to Approve [403]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}/approve",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}",
+        "approve"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 403 — teachers cannot approve', () => pm.response.to.have.status(403));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Teacher Tries to Reject [403]",
+     "request": {
+      "method": "PATCH",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_3}}/reject",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_3}}",
+        "reject"
+       ]
+      },
+      "body": {
+       "mode": "raw",
+       "raw": "{\n \"rejection_reason\": \"Teacher self-reject attempt\"\n}"
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 403', () => pm.response.to.have.status(403));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Live Broadcasting — Public API",
+   "item": [
+    {
+     "name": "Live Content — Teacher 1, All Subjects [active Maths rotation]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Returns live data', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.success).to.be.true;",
+         " pm.expect(r.data).to.be.an('array');",
+         " if (r.data.length > 0) {",
+         " const first = r.data[0];",
+         " pm.expect(first).to.have.property('subject');",
+         " pm.expect(first).to.have.property('activeContent');",
+         " pm.expect(first).to.have.property('rotationInfo');",
+         " pm.expect(first.activeContent).to.have.property('fileUrl');",
+         " console.log('Active subject:', first.subject);",
+         " console.log('Active content:', first.activeContent.title);",
+         " console.log('Rotation info:', JSON.stringify(first.rotationInfo));",
+         " }",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Filter by subject=maths",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}?subject=maths",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}"
+       ],
+       "query": [
+        {
+         "key": "subject",
+         "value": "maths"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Only maths returned', () => {",
+         " const r = pm.response.json();",
+         " r.data.forEach(item => pm.expect(item.subject).to.equal('maths'));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Science (rejected — no live content) [empty]",
+     "description": "Science was rejected, so no approved content exists — should return empty.",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}?subject=science",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}"
+       ],
+       "query": [
+        {
+         "key": "subject",
+         "value": "science"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('No content available — rejected content not shown', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data).to.be.an('array').that.is.empty;",
+         " pm.expect(r.message).to.equal('No content available');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Approved but FUTURE window (inactive) [empty]",
+     "description": "Content is approved but start_time is tomorrow — must NOT appear.",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}?subject=maths",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}"
+       ],
+       "query": [
+        {
+         "key": "subject",
+         "value": "maths"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Future-window content is excluded from live rotation', () => {",
+         " const r = pm.response.json();",
+         " if (r.data.length > 0) {",
+         " const allTitles = r.data.map(d => d.activeContent.title);",
+         " allTitles.forEach(t => {",
+         " pm.expect(t).to.not.include('tomorrow');",
+         " pm.expect(t).to.not.include('Future');",
+         " });",
+         " }",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Teacher 2, No Content Uploaded [empty]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher2_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher2_id}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Returns No content available', () => {",
+         " const r = pm.response.json();",
+         " pm.expect(r.data).to.eql([]);",
+         " pm.expect(r.message).to.equal('No content available');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Unknown Subject (invalid filter) [empty, not error]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}?subject=geography",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}"
+       ],
+       "query": [
+        {
+         "key": "subject",
+         "value": "geography"
+        }
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200 — invalid subject returns empty, not error', () => {",
+         " pm.response.to.have.status(200);",
+         "});",
+         "pm.test('Empty data array', () => pm.expect(pm.response.json().data).to.eql([]));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Live Content — Teacher Not Found (bad UUID) [404]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/00000000-0000-0000-0000-000000000000",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "00000000-0000-0000-0000-000000000000"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 404 — teacher not found', () => pm.response.to.have.status(404));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Subject Analytics — Teacher 1",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher1_id}}/analytics",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher1_id}}",
+        "analytics"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Analytics per subject returned', () => {",
+         " const rows = pm.response.json().data;",
+         " pm.expect(rows).to.be.an('array');",
+         " if (rows.length > 0) {",
+         " pm.expect(rows[0]).to.have.property('subject');",
+         " pm.expect(rows[0]).to.have.property('total_content');",
+         " pm.expect(rows[0]).to.have.property('approved_count');",
+         " pm.expect(rows[0]).to.have.property('rejected_count');",
+         " pm.expect(rows[0]).to.have.property('total_rotation_minutes');",
+         " console.log('Analytics:', JSON.stringify(rows));",
+         " }",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Subject Analytics — Teacher 2 (no content)",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/live/{{teacher2_id}}/analytics",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "live",
+        "{{teacher2_id}}",
+        "analytics"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200', () => pm.response.to.have.status(200));",
+         "pm.test('Empty analytics for teacher with no content', () => {",
+         " pm.expect(pm.response.json().data).to.be.an('array').that.is.empty;",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Security & Edge Cases",
+   "item": [
+    {
+     "name": "No Auth Token on Protected Route [401]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/content/my",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "my"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 401', () => pm.response.to.have.status(401));",
+         "pm.test('Unauthorized message', () => pm.expect(pm.response.json().success).to.be.false);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Malformed Token [401]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "this.is.not.a.real.jwt"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/auth/me",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "auth",
+        "me"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 401 — malformed token rejected', () => pm.response.to.have.status(401));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Delete Uploaded Content [200]",
+     "description": "Teachers CAN delete their own non-approved content.",
+     "request": {
+      "method": "DELETE",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id_3}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id_3}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200 — rejected content can be deleted', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Delete Approved Content [422]",
+     "description": "Teachers CANNOT delete already-approved content.",
+     "request": {
+      "method": "DELETE",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/{{content_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "{{content_id}}"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 422 — cannot delete approved content', () => pm.response.to.have.status(422));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Get Non-existent Content [404]",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{teacher_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/00000000-dead-beef-cafe-000000000000",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "00000000-dead-beef-cafe-000000000000"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 404', () => pm.response.to.have.status(404));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Unknown API Route [404]",
+     "request": {
+      "method": "GET",
+      "url": {
+       "raw": "{{base_url}}/this/does/not/exist",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "this",
+        "does",
+        "not",
+        "exist"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 404 — route not found handler works', () => pm.response.to.have.status(404));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "Principal Cannot Get Own-only Content (principal has no uploads)",
+     "request": {
+      "method": "GET",
+      "auth": {
+       "type": "bearer",
+       "bearer": [
+        {
+         "key": "token",
+         "value": "{{principal_token}}"
+        }
+       ]
+      },
+      "url": {
+       "raw": "{{base_url}}/content/all",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "content",
+        "all"
+       ]
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "exec": [
+         "pm.test('Status 200 — principal can view all content', () => pm.response.to.have.status(200));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

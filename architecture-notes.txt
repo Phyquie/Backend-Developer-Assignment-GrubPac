@@ -1,0 +1,222 @@
+================================================================
+  CONTENT BROADCASTING SYSTEM — ARCHITECTURE NOTES
+================================================================
+
+1. AUTHENTICATION & RBAC FLOW
+-------------------------------
+JWT (JSON Web Token) is used for stateless authentication.
+
+Flow:
+  POST /api/v1/auth/login
+    → bcrypt.compare(password, stored_hash)
+    → jwt.sign({ id, role }, JWT_SECRET, { expiresIn })
+    → client stores token (Authorization: Bearer <token>)
+
+On every protected request:
+  authenticate middleware → jwt.verify(token) → load user from DB
+    → attach req.user = { id, name, email, role }
+
+  authorize(...roles) middleware → check req.user.role against allowed roles
+    → 403 Forbidden if not in allowed list
+
+Roles:
+  - teacher   : can upload content, submit for review, view own content
+  - principal : can view all content, approve/reject pending submissions
+
+Separation of concerns:
+  - auth.js middleware: handles token verification
+  - rbac.js middleware: handles role enforcement
+  - These are composed per-route: authenticate → authorize('teacher')
+
+Password security: bcrypt with 12 salt rounds (intentionally slow against brute force).
+Token expiry: 7 days by default (configurable via JWT_EXPIRES_IN env var).
+
+
+2. SUBJECT-BASED SYSTEM DESIGN
+--------------------------------
+Each teacher's uploaded content belongs to a subject (e.g., Maths, Science).
+
+ContentSlot: represents a broadcast channel per teacher per subject.
+  - Unique constraint on (teacher_id, subject)
+  - Created automatically when a teacher first uploads content for a subject
+
+ContentSchedule: links content to its slot with rotation metadata.
+  - rotation_order: integer position in the broadcast queue
+  - duration: how many minutes this content stays on screen per cycle
+
+This means every teacher has independent subject queues, and subjects for
+different teachers are completely isolated.
+
+
+3. UPLOAD HANDLING
+-------------------
+Library: multer with diskStorage
+Storage: local filesystem under /uploads/
+
+File validation (two-layer):
+  1. multer fileFilter: checks MIME type AND file extension
+     Allowed: image/jpeg, image/png, image/gif (.jpg, .jpeg, .png, .gif)
+  2. File size: enforced by multer limits (default 10MB, configurable)
+
+Filename: UUID-based to avoid collisions and path traversal attacks.
+File URL: absolute HTTP URL stored in content.file_url for API consumers.
+
+On content deletion: the physical file is removed from disk (fs.unlinkSync).
+
+Bonus extension point: swap multer's DiskStorage for multer-s3 to move to S3
+without changing any controller or service code.
+
+
+4. APPROVAL WORKFLOW
+---------------------
+Content lifecycle:
+
+  uploaded (teacher uploads, content is a draft)
+      ↓
+  pending (teacher explicitly submits for review)
+      ↓
+  approved ──→ live (shown in broadcast when within time window)
+  rejected ──→ visible to teacher with rejection_reason
+
+State machine rules (enforced in approvalService.js):
+  - Only 'pending' content can be approved or rejected
+  - Rejection MUST include a non-empty reason (min 5 chars)
+  - Only users with role 'principal' can transition to approved/rejected
+
+The approved_by and approved_at fields create an audit trail for every
+approval/rejection decision.
+
+
+5. SCHEDULING / ROTATION LOGIC  ← MOST IMPORTANT
+--------------------------------------------------
+This is the core business logic in src/services/schedulingService.js.
+
+ELIGIBILITY CRITERIA (all must be true for content to appear in rotation):
+  1. status = 'approved'
+  2. start_time <= NOW() (content window has started)
+  3. end_time   >= NOW() (content window has not expired)
+  4. Both start_time AND end_time must be non-null
+     → Content without a time window is NEVER shown (assignment requirement)
+  5. Content must have a ContentSchedule entry (duration + rotation_order)
+
+ROTATION ALGORITHM (stateless & deterministic):
+  Given a group of eligible content items for one subject:
+
+  a) Sort by rotation_order ASC
+  b) totalCycleMs = Σ (duration_i × 60 × 1000)
+  c) position = Date.now() % totalCycleMs
+  d) Walk sorted list accumulating durations:
+     - when position < accumulated → current item is active
+
+  Example (Maths subject):
+    Content A: rotation_order=0, duration=5min  → ms=[0, 300000)
+    Content B: rotation_order=1, duration=5min  → ms=[300000, 600000)
+    Content C: rotation_order=2, duration=3min  → ms=[600000, 780000)
+    totalCycleMs = 780000ms (13 min)
+
+    At any moment: position = Date.now() % 780000
+    All students hitting the API at the same instant see the same content.
+    The rotation loops continuously and requires no cron job or state.
+
+  Why modulo over epoch works:
+    - Clock is the single source of truth, no DB writes needed
+    - Stateless — horizontal scaling works without coordination
+    - Deterministic — same input always produces same output
+
+EDGE CASES:
+  - No approved content for teacher      → returns []  → "No content available"
+  - Content approved but outside window  → filtered out → "No content available"
+  - Subject with no live content         → that subject absent from response
+  - Unknown teacher ID                   → 404 Not Found
+  - Invalid subject filter               → returns [] (not an error)
+  - All durations sum to zero            → first item returned as fallback
+
+
+6. DATABASE DESIGN DECISIONS
+------------------------------
+Tables: users, content, content_slots, content_schedules
+
+Primary keys: UUID v4
+  - Avoids enumeration attacks (vs sequential integers)
+  - Works in distributed environments without coordination
+
+Indexes:
+  - users.email (unique) — login lookups
+  - content_slots (teacher_id, subject) (unique) — slot lookup at upload time
+  - content.uploaded_by — teacher content queries
+  - content.status — principal pending queries
+  - content.start_time, content.end_time — scheduling range queries
+
+Normalization decisions:
+  - ContentSlot is a dedicated table (not denormalized into content) to support
+    per-slot metadata (e.g., analytics, slot-level enable/disable) in the future
+  - rotation_order stored in ContentSchedule (not Content) because it is a
+    scheduling concern, not a content concern
+
+Timestamps: all tables use created_at/updated_at (underscored convention).
+
+
+7. FOLDER STRUCTURE
+--------------------
+src/
+  config/          → database connection and environment config
+  controllers/     → thin HTTP layer (parse request, call service, return response)
+  middlewares/     → auth, rbac, multer upload, rate limiting, error handling
+  models/          → Sequelize model definitions + associations
+  routes/          → Express router wiring
+  services/        → all business logic (no HTTP concerns here)
+  utils/           → response helper, logger
+  scripts/         → seed.js (standalone executable)
+uploads/           → local file storage (git-ignored except .gitkeep)
+logs/              → Winston log output (git-ignored)
+
+
+8. MIDDLEWARE USAGE
+--------------------
+Request pipeline (for a protected upload route):
+
+  Request
+    → helmet()           (sets secure HTTP headers)
+    → cors()             (CORS policy)
+    → express.json()     (body parsing)
+    → defaultLimiter     (global rate limiting — 100 req/15min)
+    → router
+        → broadcastLimiter (60 req/min for public /live endpoint)
+        → authenticate     (JWT verification, loads req.user)
+        → authorize(role)  (RBAC check)
+        → upload.single()  (multer file processing)
+        → handleUploadError (multer error conversion)
+        → uploadValidation (express-validator rules)
+        → validate         (validation result check)
+        → controller       (business logic via service)
+    → errorHandler       (centralised error → JSON response)
+    → notFoundHandler    (404 for unknown routes)
+
+
+9. SCALABILITY APPROACH
+------------------------
+Current (assignment scope):
+  - Stateless JWT tokens — no session store needed
+  - Scheduling algorithm is O(n) per request but purely in-memory (no extra DB calls)
+  - Connection pooling via Sequelize (max 10 connections)
+
+Caching (bonus / production path):
+  - /content/live/:teacherId responses can be cached in Redis with a TTL equal to
+    the smallest rotation duration among active content (typically 5 minutes)
+  - Cache key: "live:{teacherId}:{subject|all}"
+  - Invalidate on: content approved, rejected, or when its time window starts/ends
+
+Queue (production path for uploads):
+  - File processing (virus scan, thumbnail generation) should be offloaded to a
+    job queue (Bull/BullMQ + Redis) so the upload endpoint returns immediately
+
+Horizontal scaling:
+  - Stateless JWT + shared PostgreSQL → multiple Node instances behind a load balancer
+  - Multer local storage becomes a bottleneck — replace with S3 for shared file access
+
+Database:
+  - Add read replicas for the high-traffic /content/live endpoint
+  - Partition content table by status once row count grows significantly
+  - Add pg_trgm GIN index on subject for fast subject-prefix search
+
+================================================================
