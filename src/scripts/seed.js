@@ -6,9 +6,7 @@
  */
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+const prisma = require('../config/database');
 const SALT_ROUNDS = 12;
 
 const users = [
@@ -34,7 +32,6 @@ const users = [
 
 const seed = async () => {
   try {
-    await prisma.$connect();
     console.log('Seeding users...\n');
 
     for (const userData of users) {
